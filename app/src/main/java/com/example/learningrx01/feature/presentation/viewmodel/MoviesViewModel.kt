@@ -1,12 +1,12 @@
 package com.example.learningrx01.feature.presentation.viewmodel
 
-import android.util.Log
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.example.learningrx01.feature.domain.model.Movie
 import com.example.learningrx01.feature.domain.usecase.GetMovies
 import com.example.learningrx01.feature.domain.usecase.SearchMovie
 import com.example.learningrx01.feature.domain.util.SchedulerProvider
-import io.reactivex.rxjava3.disposables.CompositeDisposable
+import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.core.ObservableTransformer
 import io.reactivex.rxjava3.subjects.PublishSubject
 
 class MoviesViewModel(
@@ -14,55 +14,60 @@ class MoviesViewModel(
     private val searchMovie: SearchMovie,
     private val schedulerProvider: SchedulerProvider
 ) : ViewModel() {
-    private val disposables = CompositeDisposable()
-    private var viewState = MoviesViewState()
+    val state by lazy { composeState() }
 
-    val state by lazy { MutableLiveData<MoviesViewState>() }
+    private val intentTransformer by lazy(::transformer)
+    private val intentSubject = PublishSubject.create<MoviesViewIntent>()
 
-    private val querySubject = PublishSubject.create<String>()
-
-    init {
-        loadMovies()
-        observeQueryChanges()
+    fun onIntent(intentObservable: Observable<MoviesViewIntent>) {
+        intentObservable.subscribe(intentSubject)
     }
 
-    fun onSearchChanged(text: String) {
-        querySubject.onNext(text)
-    }
-
-    private fun loadMovies() {
-        getMovies()
-            .subscribeOn(schedulerProvider.io())
-            .observeOn(schedulerProvider.ui())
-            .doOnSubscribe {
-                viewState.copy(isLoading = true).emit()
-            }
-            .subscribe(
-                {
-                    viewState.copy(movies = it, isLoading = false).emit()
-                },
-                {
-                    Log.d("GetGitHubRepo", "$it")
-                    viewState.copy(hasError = true, isLoading = false).emit()
+    private fun composeState(): Observable<MoviesViewState> {
+        return intentSubject
+            .compose(intentTransformer)
+            .scan(MoviesViewState()) { state, mutation ->
+                when (mutation) {
+                    is MoviesStateMutation.Data -> state.copy(
+                        movies = mutation.movies,
+                        isLoading = false,
+                        hasError = false
+                    )
+                    is MoviesStateMutation.Loading -> state.copy(
+                        isLoading = true,
+                        hasError = false
+                    )
+                    is MoviesStateMutation.Error -> state.copy(
+                        isLoading = false,
+                        hasError = true
+                    )
                 }
-            )
-            .let(disposables::add)
+            }
+            .distinctUntilChanged()
+            .replay(1)
+            .autoConnect()
     }
 
-    private fun observeQueryChanges() {
-        querySubject
-            .switchMap(searchMovie::invoke)
-            .subscribeOn(schedulerProvider.io())
+    private fun transformer() =
+        ObservableTransformer<MoviesViewIntent, MoviesStateMutation> { upstream ->
+            upstream.switchMap { intent ->
+                when (intent) {
+                    is MoviesViewIntent.LoadMovies -> {
+                        getMovies().applyCommonOperators()
+                    }
+                    is MoviesViewIntent.SearchMovies -> {
+                        searchMovie(intent.text).applyCommonOperators()
+                    }
+                }
+            }
+        }
+
+    private fun Observable<List<Movie>>.applyCommonOperators(): Observable<MoviesStateMutation> {
+        return subscribeOn(schedulerProvider.io())
             .observeOn(schedulerProvider.ui())
-            .subscribe(
-                { viewState.copy(movies = it).emit() },
-                { Log.d("MoviesViewModel", "onSearchChanged: $it") }
-            )
-            .let(disposables::add)
-    }
-
-    private fun MoviesViewState.emit() {
-        viewState = this
-        state.value = viewState
+            .map { MoviesStateMutation.Data(it) }
+            .cast(MoviesStateMutation::class.java)
+            .startWithItem(MoviesStateMutation.Loading)
+            .onErrorReturnItem(MoviesStateMutation.Error)
     }
 }

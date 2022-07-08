@@ -3,16 +3,19 @@ package com.example.learningrx01.feature.domain.usecase
 import com.example.learningrx01.feature.domain.boundaries.MoviesRepository
 import com.example.learningrx01.feature.domain.model.Movie
 import com.example.learningrx01.feature.domain.util.SchedulerProvider
-import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Observable
 import java.util.concurrent.TimeUnit
 
-class SearchMovie(
+interface SearchMovie {
+    operator fun invoke(text: String): Observable<List<Movie>>
+}
+
+class SearchMovieImpl(
     private val repository: MoviesRepository,
     private val schedulerProvider: SchedulerProvider
-) {
+) : SearchMovie {
 
-    operator fun invoke(text: String): Observable<List<Movie>> =
+    override operator fun invoke(text: String): Observable<List<Movie>> =
         Observable
             .merge(
                 repository.getPopularMovies().subscribeOn(schedulerProvider.io()),

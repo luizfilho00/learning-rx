@@ -10,7 +10,11 @@ import com.example.learningrx01.R
 import com.example.learningrx01.databinding.ActivityMoviesBinding
 import com.example.learningrx01.feature.presentation.adapter.GitHubReposAdapter
 import com.example.learningrx01.feature.presentation.adapter.MovieItemDecoration
+import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewIntent
 import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewModel
+import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.disposables.CompositeDisposable
+import io.reactivex.rxjava3.subjects.PublishSubject
 import org.koin.androidx.scope.ScopeActivity
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -25,12 +29,18 @@ class MoviesActivity : ScopeActivity() {
     private val adapter by lazy { GitHubReposAdapter() }
     private val decoration by lazy { MovieItemDecoration(resources) }
 
+    private val querySubject = PublishSubject.create<String>()
+    private val loadIntent = Observable.just(MoviesViewIntent.LoadMovies)
+
+    private val disposables = CompositeDisposable()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMoviesBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setupUI()
         observeUI()
+        viewModel.onIntent(intentObservable())
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -43,7 +53,7 @@ class MoviesActivity : ScopeActivity() {
             }
 
             override fun onQueryTextChange(text: String?): Boolean {
-                viewModel.onSearchChanged(text.orEmpty())
+                querySubject.onNext(text.orEmpty())
                 return false
             }
         })
@@ -51,8 +61,10 @@ class MoviesActivity : ScopeActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         binding.recyclerView.adapter = null
+        querySubject.onComplete()
+        disposables.clear()
+        super.onDestroy()
     }
 
     private fun setupUI() {
@@ -63,16 +75,18 @@ class MoviesActivity : ScopeActivity() {
     }
 
     private fun observeUI() {
-        viewModel.state.observe(this) { viewState ->
+        viewModel.state.subscribe { viewState ->
             binding.viewFlipper.displayedChild =
                 if (viewState.isLoading) LOADING
                 else DATA
             adapter.submitList(viewState.movies)
-            Handler(Looper.getMainLooper())
-                .postDelayed(
-                    { binding.recyclerView.scrollToPosition(0) },
-                    100
-                )
-        }
+        }.let(disposables::add)
+    }
+
+    private fun intentObservable(): Observable<MoviesViewIntent> {
+        return Observable.merge(
+            loadIntent,
+            querySubject.skip(1).map { MoviesViewIntent.SearchMovies(it) }
+        )
     }
 }

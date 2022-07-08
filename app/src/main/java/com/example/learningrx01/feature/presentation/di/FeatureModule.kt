@@ -5,7 +5,9 @@ import com.example.learningrx01.feature.data.remote.ApiService
 import com.example.learningrx01.feature.data.repositories.MoviesRepositoryImpl
 import com.example.learningrx01.feature.domain.boundaries.MoviesRepository
 import com.example.learningrx01.feature.domain.usecase.GetMovies
+import com.example.learningrx01.feature.domain.usecase.GetMoviesImpl
 import com.example.learningrx01.feature.domain.usecase.SearchMovie
+import com.example.learningrx01.feature.domain.usecase.SearchMovieImpl
 import com.example.learningrx01.feature.domain.util.SchedulerProvider
 import com.example.learningrx01.feature.presentation.MoviesActivity
 import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewModel
@@ -29,7 +31,7 @@ val featureModule = module {
     scope<MoviesActivity> {
         viewModel { MoviesViewModel(get(), get(), get()) }
         scoped<MoviesRepository> { MoviesRepositoryImpl(get(), get(named("ImageBaseUrl"))) }
-        scoped { GetMovies(get(), get()) }
-        scoped { SearchMovie(get(), get()) }
+        scoped<GetMovies> { GetMoviesImpl(get(), get()) }
+        scoped<SearchMovie> { SearchMovieImpl(get(), get()) }
     }
 }

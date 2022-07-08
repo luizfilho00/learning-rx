@@ -1,6 +1,8 @@
 package com.example.learningrx01.feature.presentation
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import androidx.appcompat.widget.SearchView
 import androidx.recyclerview.widget.RecyclerView
@@ -66,6 +68,11 @@ class MoviesActivity : ScopeActivity() {
                 if (viewState.isLoading) LOADING
                 else DATA
             adapter.submitList(viewState.movies)
+            Handler(Looper.getMainLooper())
+                .postDelayed(
+                    { binding.recyclerView.scrollToPosition(0) },
+                    100
+                )
         }
     }
 }

@@ -1,12 +1,12 @@
 package com.example.learningrx01.feature.presentation.di
 
-import com.example.learningrx01.app.SchedulerProvider
 import com.example.learningrx01.app.SchedulerProviderImpl
 import com.example.learningrx01.feature.data.remote.ApiService
 import com.example.learningrx01.feature.data.repositories.MoviesRepositoryImpl
 import com.example.learningrx01.feature.domain.boundaries.MoviesRepository
 import com.example.learningrx01.feature.domain.usecase.GetMovies
 import com.example.learningrx01.feature.domain.usecase.SearchMovie
+import com.example.learningrx01.feature.domain.util.SchedulerProvider
 import com.example.learningrx01.feature.presentation.MoviesActivity
 import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -27,9 +27,9 @@ val featureModule = module {
     }
 
     scope<MoviesActivity> {
-        viewModel { MoviesViewModel(get(), get()) }
+        viewModel { MoviesViewModel(get(), get(), get()) }
         scoped<MoviesRepository> { MoviesRepositoryImpl(get(), get(named("ImageBaseUrl"))) }
-        scoped { GetMovies(get()) }
-        scoped { SearchMovie() }
+        scoped { GetMovies(get(), get()) }
+        scoped { SearchMovie(get(), get()) }
     }
 }

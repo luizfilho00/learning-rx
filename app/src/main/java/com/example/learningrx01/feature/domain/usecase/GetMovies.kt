@@ -2,20 +2,22 @@ package com.example.learningrx01.feature.domain.usecase
 
 import com.example.learningrx01.feature.domain.boundaries.MoviesRepository
 import com.example.learningrx01.feature.domain.model.Movie
-import io.reactivex.rxjava3.core.Single
+import com.example.learningrx01.feature.domain.util.SchedulerProvider
+import io.reactivex.rxjava3.core.Observable
 
 class GetMovies(
-    private val repository: MoviesRepository
+    private val repository: MoviesRepository,
+    private val schedulerProvider: SchedulerProvider
 ) {
 
-    operator fun invoke(): Single<List<Movie>> =
-        repository
-            .getPopularMovies()
-            .flatMap { popularMovies ->
-                repository
-                    .getTopRatedMovies()
-                    .map { topRatedMovies ->
-                        popularMovies + topRatedMovies
-                    }
+    operator fun invoke(): Observable<List<Movie>> =
+        Observable
+            .merge(
+                repository.getPopularMovies().subscribeOn(schedulerProvider.io()),
+                repository.getTopRatedMovies().subscribeOn(schedulerProvider.io())
+            )
+            .reduce { popularMovies, topRatedMovies ->
+                popularMovies + topRatedMovies
             }
+            .toObservable()
 }

@@ -1,9 +1,9 @@
 package com.example.learningrx01.feature.domain.boundaries
 
 import com.example.learningrx01.feature.domain.model.Movie
-import io.reactivex.rxjava3.core.Single
+import io.reactivex.rxjava3.core.Observable
 
 interface MoviesRepository {
-    fun getPopularMovies(): Single<List<Movie>>
-    fun getTopRatedMovies(): Single<List<Movie>>
+    fun getPopularMovies(): Observable<List<Movie>>
+    fun getTopRatedMovies(): Observable<List<Movie>>
 }

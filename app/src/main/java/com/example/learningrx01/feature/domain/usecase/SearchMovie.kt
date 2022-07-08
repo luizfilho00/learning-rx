@@ -1,20 +1,33 @@
 package com.example.learningrx01.feature.domain.usecase
 
+import com.example.learningrx01.feature.domain.boundaries.MoviesRepository
 import com.example.learningrx01.feature.domain.model.Movie
-import io.reactivex.rxjava3.core.Single
+import com.example.learningrx01.feature.domain.util.SchedulerProvider
+import io.reactivex.rxjava3.core.Maybe
+import io.reactivex.rxjava3.core.Observable
+import java.util.concurrent.TimeUnit
 
-class SearchMovie {
+class SearchMovie(
+    private val repository: MoviesRepository,
+    private val schedulerProvider: SchedulerProvider
+) {
 
-    operator fun invoke(movies: List<Movie>, text: String): Single<List<Movie>> {
-        return if (text.isEmpty()) {
-            Single.just(movies)
-        } else {
-            Single.just(
-                movies.filter {
+    operator fun invoke(text: String): Observable<List<Movie>> =
+        Observable
+            .merge(
+                repository.getPopularMovies().subscribeOn(schedulerProvider.io()),
+                repository.getTopRatedMovies().subscribeOn(schedulerProvider.io())
+            )
+            .delay(300, TimeUnit.MILLISECONDS)
+            .reduce { popularMovies, topRatedMovies ->
+                popularMovies + topRatedMovies
+            }
+            .map { list ->
+                list.filter {
                     it.title.contains(text, true) ||
                         it.overview.contains(text, true)
                 }
-            )
-        }
-    }
+            }
+            .doOnSuccess { println("Search: $text") }
+            .toObservable()
 }

@@ -1,23 +1,29 @@
 package com.example.learningrx01.feature.presentation.viewmodel
 
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import com.example.learningrx01.feature.domain.model.Movie
 import com.example.learningrx01.feature.domain.usecase.GetMovies
 import com.example.learningrx01.feature.domain.usecase.SearchMovie
 import com.example.learningrx01.feature.domain.util.SchedulerProvider
-import io.mockk.MockKAnnotations
-import io.mockk.clearAllMocks
-import io.mockk.every
+import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Scheduler
 import io.reactivex.rxjava3.schedulers.Schedulers
 import io.reactivex.rxjava3.schedulers.TestScheduler
-import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 class MoviesViewModelTest {
+
+    @Rule
+    @JvmField
+    val rule = InstantTaskExecutorRule()
 
     lateinit var vm: MoviesViewModel
 
@@ -54,41 +60,26 @@ class MoviesViewModelTest {
         val movies = listOf(Movie(1, "title", "overview", "poster"))
         every { getMovies() } returns Observable.just(movies)
 
-        val state = vm.state.test()
+        val states = vm.state.captureValues()
+        vm.onIntent(MoviesViewIntent.LoadMovies)
 
-        vm.onIntent(Observable.just(MoviesViewIntent.LoadMovies))
-
-        state
-            .assertValueAt(0) {
-                it == MoviesViewState()
-            }
-            .assertValueAt(1) {
-                it.isLoading
-            }
-            .assertValueAt(2) {
-                !it.isLoading && !it.hasError && it.movies == movies
-            }
+        states
+            .assertValueAt(0) { it == MoviesViewState() }
+            .assertValueAt(1) { it.isLoading }
+            .assertValueAt(2) { !it.isLoading && !it.hasError && it.movies == movies }
     }
 
     @Test
     fun testLoadError() {
         every { getMovies() } returns Observable.error(Throwable())
 
-        val state = vm.state.test()
+        val states = vm.state.captureValues()
+        vm.onIntent(MoviesViewIntent.LoadMovies)
 
-        vm.onIntent(Observable.just(MoviesViewIntent.LoadMovies))
-
-        state
-            .assertValueAt(0) {
-                it == MoviesViewState()
-            }
-            .assertValueAt(1) {
-                it.isLoading
-            }
-            .assertValueAt(2) {
-                it.hasError && !it.isLoading
-            }
-
+        states
+            .assertValueAt(0) { !it.isLoading }
+            .assertValueAt(1) { it.isLoading }
+            .assertValueAt(2) { !it.isLoading && it.hasError && it.movies.isEmpty() }
     }
 
     @Test
@@ -99,20 +90,14 @@ class MoviesViewModelTest {
             searchMovie(any())
         } returns Observable.just(movies)
 
-        val state = vm.state.test()
+        val states = vm.state.captureValues()
+        vm.onIntent(MoviesViewIntent.SearchMovies(""))
 
-        vm.onIntent(Observable.just(MoviesViewIntent.SearchMovies("")))
-
-        state
-            .assertValueAt(0) {
-                it == MoviesViewState()
-            }
-            .assertValueAt(1) {
-                it.isLoading
-            }
-            .assertValueAt(2) {
-                !it.isLoading && !it.hasError && it.movies == movies
-            }
+        states
+            .assertValueAt(0) { !it.isLoading }
+            .assertValueAt(1) { it.isLoading }
+            .assertValueAt(2) { !it.isLoading && !it.hasError && it.movies == movies }
+            .assertCount(3)
     }
 
     @Test
@@ -120,25 +105,24 @@ class MoviesViewModelTest {
         var callsToSearch = 0
         val testScheduler = TestScheduler()
         val movies = listOf(Movie(1, "title", "overview", "poster"))
-        val queryObservable =
-            Observable.fromIterable(listOf("b", "ba", "bat", "batm", "batma", "batman"))
-                .map { MoviesViewIntent.SearchMovies(it) }
-                .cast(MoviesViewIntent::class.java)
+        val search = mutableListOf("b", "ba", "bat", "batm", "batma", "batman")
 
         every {
             searchMovie(any())
         } returns Observable
-            .timer(10, TimeUnit.SECONDS, testScheduler)
+            .timer(1, TimeUnit.SECONDS, testScheduler)
             .map { movies }
             .doOnNext { callsToSearch++ }
 
-        val state = vm.state.test()
+        val states = vm.state.captureValues()
+        Observable.timer(100, TimeUnit.MILLISECONDS, testScheduler)
+            .map { search.removeFirst() }
+            .map { MoviesViewIntent.SearchMovies(it) }
+            .doOnNext { vm.onIntent(it) }
+            .test()
+        testScheduler.advanceTimeBy(10, TimeUnit.SECONDS)
 
-        vm.onIntent(queryObservable)
-
-        testScheduler.advanceTimeBy(1, TimeUnit.MINUTES)
-
-        state
+        states
             .assertValueAt(0) {
                 it == MoviesViewState()
             }
@@ -148,7 +132,29 @@ class MoviesViewModelTest {
             .assertValueAt(2) {
                 !it.isLoading && !it.hasError && it.movies == movies
             }
+            .assert { callsToSearch == 1 }
+    }
 
-        assert(callsToSearch == 1)
+    private fun <T> List<T>.assertValueAt(index: Int, predicate: (T) -> Boolean): List<T> {
+        assert(predicate(get(index)))
+        return this
+    }
+
+    private fun <T> List<T>.assertCount(size: Int): List<T> {
+        assert(this.size == size)
+        return this
+    }
+
+    private fun <T> List<T>.assert(predicate: () -> Boolean): List<T> {
+        assert(predicate())
+        return this
+    }
+
+    private inline fun <reified T : Any> LiveData<T>.captureValues(): List<T> {
+        val mockObserver = mockk<Observer<T>>()
+        val list = mutableListOf<T>()
+        every { mockObserver.onChanged(capture(list)) } just runs
+        this.observeForever(mockObserver)
+        return list
     }
 }

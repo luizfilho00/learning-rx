@@ -1,8 +1,6 @@
 package com.example.learningrx01.feature.presentation
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Menu
 import androidx.appcompat.widget.SearchView
 import androidx.recyclerview.widget.RecyclerView
@@ -10,11 +8,9 @@ import com.example.learningrx01.R
 import com.example.learningrx01.databinding.ActivityMoviesBinding
 import com.example.learningrx01.feature.presentation.adapter.GitHubReposAdapter
 import com.example.learningrx01.feature.presentation.adapter.MovieItemDecoration
-import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewIntent
+import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewIntent.LoadMovies
+import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewIntent.SearchMovies
 import com.example.learningrx01.feature.presentation.viewmodel.MoviesViewModel
-import io.reactivex.rxjava3.core.Observable
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.subjects.PublishSubject
 import org.koin.androidx.scope.ScopeActivity
 import org.koin.androidx.viewmodel.ext.android.viewModel
 
@@ -29,18 +25,13 @@ class MoviesActivity : ScopeActivity() {
     private val adapter by lazy { GitHubReposAdapter() }
     private val decoration by lazy { MovieItemDecoration(resources) }
 
-    private val querySubject = PublishSubject.create<String>()
-    private val loadIntent = Observable.just(MoviesViewIntent.LoadMovies)
-
-    private val disposables = CompositeDisposable()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMoviesBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setupUI()
         observeUI()
-        viewModel.onIntent(intentObservable())
+        viewModel.onIntent(LoadMovies)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -53,7 +44,8 @@ class MoviesActivity : ScopeActivity() {
             }
 
             override fun onQueryTextChange(text: String?): Boolean {
-                querySubject.onNext(text.orEmpty())
+                if (text != null)
+                    viewModel.onIntent(SearchMovies(text))
                 return false
             }
         })
@@ -61,10 +53,8 @@ class MoviesActivity : ScopeActivity() {
     }
 
     override fun onDestroy() {
-        binding.recyclerView.adapter = null
-        querySubject.onComplete()
-        disposables.clear()
         super.onDestroy()
+        binding.recyclerView.adapter = null
     }
 
     private fun setupUI() {
@@ -75,18 +65,11 @@ class MoviesActivity : ScopeActivity() {
     }
 
     private fun observeUI() {
-        viewModel.state.subscribe { viewState ->
+        viewModel.state.observe(this) { viewState ->
             binding.viewFlipper.displayedChild =
                 if (viewState.isLoading) LOADING
                 else DATA
             adapter.submitList(viewState.movies)
-        }.let(disposables::add)
-    }
-
-    private fun intentObservable(): Observable<MoviesViewIntent> {
-        return Observable.merge(
-            loadIntent,
-            querySubject.skip(1).map { MoviesViewIntent.SearchMovies(it) }
-        )
+        }
     }
 }
